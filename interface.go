@@ -25,9 +25,11 @@
 package gofondy
 
 import (
+	"context"
+
 	"github.com/google/uuid"
 )
 
 type FondyGateway interface {
-	VerificationLink(invoiceId uuid.UUID, email *string, note string, code CurrencyCode) (*string, error)
+	VerificationLink(ctx context.Context, invoiceId uuid.UUID, email *string, note string, code CurrencyCode, merchantAccount *MerchantAccount) (*string, error)
 }

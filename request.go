@@ -33,10 +33,10 @@ import (
 )
 
 type Request struct {
-	Request RequestObject `json:"request"`
+	Request *RequestObject `json:"request"`
 }
 
-func NewFondyRequest(request RequestObject) *Request {
+func NewFondyRequest(request *RequestObject) *Request {
 	return &Request{Request: request}
 }
 
@@ -60,21 +60,31 @@ type RequestObject struct {
 	Verification      *string `json:"verification,omitempty"`
 	RequiredRectoken  *string `json:"required_rectoken,omitempty"`
 	MerchantData      *string `json:"merchant_data,omitempty"`
-	ReceiverRectoken  *string `json:"receiver_rectoken"`
+	ReceiverRectoken  *string `json:"receiver_rectoken,omitempty"`
+	Container         *string `json:"container,omitempty"`
+
+	AdditionalData map[string]string `json:"-"`
 }
 
-// CreateSignature - creates signature for fondy payment gate
-func (r *RequestObject) CreateSignature(merchantKey string) error {
-	s := ""
+// Sign - adds signature for request using provided key
+func (r *RequestObject) Sign(key string) error {
+	if r.Signature != nil {
+		r.Signature = nil
+	}
 
-	s += merchantKey + "|"
+	s := key + "|"
 
 	values := reflect.ValueOf(*r)
 	types := values.Type()
 	preFiltered := map[string]string{}
 
 	for i := 0; i < values.NumField(); i++ {
+		if types.Field(i).Name == "AdditionalData" {
+			continue
+		}
+
 		t := values.Field(i).Interface()
+
 		if t != nil {
 			s, ok := t.(*string)
 			if ok && s != nil {

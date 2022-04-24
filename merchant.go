@@ -25,18 +25,24 @@
 package gofondy
 
 import (
-	"time"
+	"github.com/google/uuid"
 )
 
-type Options struct {
-	Debug                   bool
-	Timeout                 time.Duration
-	KeepAlive               time.Duration
-	IdleConnTimeout         time.Duration
-	VerificationAmount      int
-	VerificationDescription string
-	VerificationLifeTime    time.Duration
+type MerchantFlowType string
 
-	CallbackBaseURL string
-	CallbackUrl     string
+const (
+	MerchantFlowTypeWithdraw MerchantFlowType = "withdraw"
+	MerchantFlowTypePayment  MerchantFlowType = "payment"
+)
+
+type MerchantAccount struct {
+	UUID                     uuid.UUID        `json:"uuid"`
+	Name                     string           `json:"name"`
+	MerchantString           string           `json:"merchant_string"`
+	MerchantAddedDescription string           `json:"merchant_added_description"`
+	MerchantFlowType         MerchantFlowType `json:"merchant_flow_type"`
+	MerchantID               string           `json:"merchant_id"`
+	MerchantKey              string           `json:"merchant_key"`
+	MerchantCreditKey        string           `json:"merchant_credit_key"`
+	MerchantDesignID         string           `json:"merchant_design_id"`
 }

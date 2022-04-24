@@ -25,6 +25,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -35,22 +36,31 @@ import (
 
 func main() {
 	options := &gofondy.Options{
+		Debug:                   true,
 		Timeout:                 30 * time.Second,
 		KeepAlive:               30 * time.Second,
-		MaxIdleConns:            10,
 		IdleConnTimeout:         20 * time.Second,
 		VerificationAmount:      1,
 		VerificationDescription: "Verification Test",
 		VerificationLifeTime:    600 * time.Second,
 		CallbackUrl:             FondyVerificationCallbackURL,
-		DesignId:                DesignId,
-		MerchantId:              MerchantId,
-		MerchantKey:             MerchantKey,
 	}
 
 	fondyGateway := gofondy.New(options)
 
-	verificationLink, err := fondyGateway.VerificationLink(uuid.New(), nil, "test", gofondy.CurrencyCodeUAH)
+	merchantAccount := &gofondy.MerchantAccount{
+		UUID:                     uuid.New(),
+		Name:                     "Test Merchant",
+		MerchantString:           "Merchant account for testing",
+		MerchantAddedDescription: "MRCH01",
+		MerchantFlowType:         gofondy.MerchantFlowTypePayment,
+		MerchantID:               MerchantId,
+		MerchantKey:              MerchantKey,
+		MerchantCreditKey:        MerchantCreditKey,
+		MerchantDesignID:         DesignId,
+	}
+
+	verificationLink, err := fondyGateway.VerificationLink(context.Background(), uuid.New(), nil, "Test Verification", gofondy.CurrencyCodeUAH, merchantAccount)
 	if err != nil {
 		log.Fatal(err)
 	}

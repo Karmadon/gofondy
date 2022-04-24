@@ -25,121 +25,55 @@
 package gofondy
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"io/ioutil"
-	"net"
-	"net/http"
 	"strconv"
 
 	"github.com/google/uuid"
 )
 
 type gateway struct {
-	client  *http.Client
+	client  *client
 	options *Options
 }
 
 func New(options *Options) FondyGateway {
-	g := &gateway{options: options}
-
-	dialer := &net.Dialer{
-		Timeout:   options.Timeout,
-		KeepAlive: options.KeepAlive,
-	}
-
-	tr := &http.Transport{
-		MaxIdleConns:       options.MaxIdleConns,
-		IdleConnTimeout:    options.IdleConnTimeout,
-		DisableCompression: true,
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialer.DialContext(ctx, network, addr)
-		}}
-
-	g.client = &http.Client{Transport: tr}
-
-	return g
+	c := newClient(options.Debug, options.Timeout, options.KeepAlive, options.IdleConnTimeout)
+	return &gateway{options: options, client: c}
 }
 
-func (g *gateway) VerificationLink(invoiceId uuid.UUID, email *string, note string, code CurrencyCode) (*string, error) {
+func (g *gateway) VerificationLink(ctx context.Context, invoiceId uuid.UUID, email *string, note string, code CurrencyCode, merchantAccount *MerchantAccount) (*string, error) {
 	fondyVerificationAmount := g.options.VerificationAmount * 100
 	lf := strconv.FormatFloat(g.options.VerificationLifeTime.Seconds(), 'f', 2, 64)
 	cbu := g.options.CallbackBaseURL + g.options.CallbackUrl
 
-	request := RequestObject{
+	request := &RequestObject{
 		MerchantData:      StringRef(note + "/card verification"),
 		Amount:            StringRef(strconv.Itoa(fondyVerificationAmount)),
 		OrderID:           StringRef(invoiceId.String()),
 		OrderDesc:         StringRef(g.options.VerificationDescription),
 		Lifetime:          StringRef(lf),
 		Verification:      StringRef("Y"),
-		DesignID:          StringRef(g.options.DesignId),
-		MerchantID:        StringRef(g.options.MerchantId),
+		DesignID:          StringRef(merchantAccount.MerchantDesignID),
+		MerchantID:        StringRef(merchantAccount.MerchantID),
 		RequiredRectoken:  StringRef("Y"),
 		Currency:          StringRef(code.String()),
 		ServerCallbackURL: StringRef(cbu),
 		SenderEmail:       email,
 	}
 
-	raw, err := g.makeFondyRequest(request, FondyURLGetVerification, false)
+	paymentResponse, err := g.client.payment(ctx, FondyURLGetVerification, request, merchantAccount)
 	if err != nil {
-		return nil, NewAPIError(800, "Http request failed", err, &request, raw)
+		return nil, NewAPIError(800, "Http request failed", err, request, paymentResponse)
 	}
 
-	fondyResponse, err := UnmarshalFondyResponse(*raw)
+	fondyResponse, err := UnmarshalFondyResponse(*paymentResponse)
 	if err != nil {
-		return nil, NewAPIError(801, "Unmarshal response fail", err, &request, raw)
+		return nil, NewAPIError(801, "Unmarshal response fail", err, request, paymentResponse)
 	}
 
 	if fondyResponse.Response.CheckoutURL == nil {
-		return nil, NewAPIError(802, "No Url In Response", err, &request, raw)
+		return nil, NewAPIError(802, "No Url In Response", err, request, paymentResponse)
 	}
 
 	return fondyResponse.Response.CheckoutURL, nil
-}
-
-func (g *gateway) makeFondyRequest(request RequestObject, url FondyURL, credit bool) (*[]byte, error) {
-	methodPost := "POST"
-	err := request.CreateSignature(g.options.MerchantKey)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create signature: %w", err)
-	}
-
-	jsonValue, err := json.Marshal(NewFondyRequest(request))
-	if err != nil {
-		return nil, fmt.Errorf("cannot marshal request: %w", err)
-	}
-
-	req, err := http.NewRequest(methodPost, url.String(), bytes.NewBuffer(jsonValue))
-	if err != nil {
-		return nil, fmt.Errorf("cannot create request: %w", err)
-	}
-
-	req.Header = http.Header{
-		"User-Agent":   {"Utax driveapp Service/" + Version},
-		"Accept":       {"application/json"},
-		"Content-Type": {"application/json"},
-		"X-Request-ID": {uuid.New().String()},
-	}
-
-	resp, err := g.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("cannot send request: %w", err)
-	}
-
-	raw, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read response: %w", err)
-	}
-
-	_, err = io.Copy(ioutil.Discard, resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("cannot copy response buffer: %w", err)
-	}
-	defer resp.Body.Close()
-
-	return &raw, nil
 }
